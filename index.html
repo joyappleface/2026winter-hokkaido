@@ -1,817 +1,738 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>北歐極光風 - 日本東北北海道之旅</title>
-    
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 設定 Tailwind 字型 -->
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
-            colors: {
-              aurora: {
-                bg: '#020617',   // 深夜空
-                card: '#0f172a', // 深藍灰
-                teal: '#2dd4bf', // 極光綠
-                blue: '#38bdf8', // 冰河藍
-              }
-            }
-          }
-        }
-      }
-    </script>
+import React, { useState, useEffect } from 'react';
+import { 
+  MapPin, Calendar, Wallet, Plus, Trash2, Edit3, 
+  Navigation, CheckCircle2, MoreHorizontal, StickyNote, 
+  Train, Bed, Utensils, ShoppingBag, Mountain, Link as LinkIcon,
+  Plane, X, ChevronRight, ExternalLink,
+  PieChart, ArrowRightLeft
+} from 'lucide-react';
 
-    <!-- Import Map -->
-    <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+// --- 輔助組件 ---
+
+// 1. 北歐大地風卡片容器 (Warm & Glassmorphism)
+const GlassCard = ({ children, className = "", onClick }) => (
+  <div onClick={onClick} className={`bg-[#FFFCF5]/80 backdrop-blur-xl border border-[#E6E1D6] shadow-[0_2px_15px_-3px_rgba(0,0,0,0.05)] rounded-2xl p-5 ${className}`}>
+    {children}
+  </div>
+);
+
+// 2. 類別圖示與顏色設定 (回歸大地暖色系)
+const CATEGORIES = {
+  food: { label: '餐飲', icon: <Utensils size={18} />, color: '#D97706', bg: 'bg-orange-100', text: 'text-orange-600' },
+  transport: { label: '交通', icon: <Train size={18} />, color: '#059669', bg: 'bg-emerald-100', text: 'text-emerald-600' },
+  shopping: { label: '購物', icon: <ShoppingBag size={18} />, color: '#BE185D', bg: 'bg-pink-100', text: 'text-pink-600' },
+  hotel: { label: '住宿', icon: <Bed size={18} />, color: '#57534E', bg: 'bg-stone-200', text: 'text-stone-600' },
+  activity: { label: '娛樂', icon: <Mountain size={18} />, color: '#2563EB', bg: 'bg-blue-100', text: 'text-blue-600' },
+  other: { label: '其他', icon: <MoreHorizontal size={18} />, color: '#9CA3AF', bg: 'bg-gray-100', text: 'text-gray-600' },
+};
+
+const getTypeIcon = (type) => {
+  // 對應上方 CATEGORIES 的顏色邏輯，這裡簡化處理直接回傳 JSX
+  switch (type) {
+    case 'food': return <Utensils size={16} className="text-orange-600" />;
+    case 'hotel': return <Bed size={16} className="text-stone-600" />;
+    case 'shopping': return <ShoppingBag size={16} className="text-pink-600" />;
+    case 'transport': return <Train size={16} className="text-emerald-600" />;
+    case 'flight': return <Plane size={16} className="text-sky-600" />;
+    default: return <Mountain size={16} className="text-blue-600" />;
+  }
+};
+
+const getTypeLabel = (type) => {
+  const map = { food: '餐廳', hotel: '住宿', shopping: '購物', transport: '交通', activity: '景點', flight: '航班' };
+  return map[type] || '活動';
+};
+
+// 3. 數字鍵盤 (大地色模式)
+const NumberPad = ({ onInput, onDelete, onConfirm, onClose }) => {
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'Del'];
+  return (
+    <div className="bg-[#FFFCF5] border-t border-[#E6E1D6] p-4 pb-8">
+      <div className="grid grid-cols-3 gap-3">
+        {keys.map(k => (
+          <button 
+            key={k} 
+            onClick={() => k === 'Del' ? onDelete() : onInput(k)}
+            className={`py-4 text-xl font-medium rounded-2xl transition-colors ${k === 'Del' ? 'bg-[#F5F5F4] text-[#A8A29E]' : 'bg-white border border-[#E6E1D6] hover:bg-[#F5F5F4] text-[#57534E]'}`}
+          >
+            {k}
+          </button>
+        ))}
+        <button onClick={onConfirm} className="col-span-3 py-4 bg-[#5B7C75] text-white font-bold rounded-2xl mt-2 text-lg shadow-lg shadow-[#5B7C75]/20 active:scale-[0.98] transition-all">
+          確認儲存
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- 主程式 ---
+export default function App() {
+  const [activeTab, setActiveTab] = useState('itinerary');
+  const [tripName, setTripName] = useState("日本東北＋北海道行程");
+  
+  // --- 行程資料 (保持您的日本行程不變) ---
+  const [days, setDays] = useState([
+    { id: 1, date: '2/13', dayName: 'D1｜札幌', items: [
+      { id: 101, time: '14:00', title: '抵達新千歲機場', location: '新千歲機場 (CTS)', type: 'flight', notes: '國內或國際航廈確認', link: '' },
+      { id: 102, time: '15:30', title: 'JR 前往札幌', location: '新千歲機場站', type: 'transport', notes: '需搭乘快速列車', link: '' },
+      { id: 103, time: '16:30', title: '飯店 check-in', location: '札幌市區飯店', type: 'hotel', notes: '確認入住手續', link: '' },
+      { id: 104, time: '17:30', title: '札幌市區散策', location: '大通公園、時計台', type: 'activity', notes: '拍夜景', link: '' },
+      { id: 105, time: '19:00', title: '晚餐', location: '湯咖哩、成吉思汗烤羊肉', type: 'food', notes: '備選餐廳：達摩', link: '' },
+      { id: 106, time: '21:00', title: '回飯店休息', location: '札幌飯店', type: 'activity', notes: '', link: '' },
+    ]},
+    { id: 2, date: '2/14', dayName: 'D2｜小樽', items: [
+      { id: 201, time: '08:00', title: '早餐後從札幌出發', location: 'JR 札幌站', type: 'transport', notes: '搭乘 JR 至小樽', link: '' },
+      { id: 202, time: '09:00', title: '小樽運河散策', location: '小樽運河', type: 'activity', notes: '確認是否有積雪', link: '' },
+      { id: 203, time: '11:00', title: '堺町通美食購物', location: 'LeTAO、北菓樓', type: 'shopping', notes: '必買 LeTAO 雙層乳酪蛋糕', link: '' },
+      { id: 204, time: '13:00', title: '景點參觀', location: '音樂盒堂、北一硝子', type: 'activity', notes: '北一硝子三號館拍照', link: '' },
+      { id: 205, time: '16:00', title: '飯店 check-in', location: '小樽飯店', type: 'hotel', notes: '放行李休息', link: '' },
+      { id: 206, time: '17:30', title: '晚餐', location: '壽司通或海鮮', type: 'food', notes: '備選政壽司或旭壽司', link: '' },
+      { id: 207, time: '20:00', title: '小樽夜景散步', location: '運河夜景', type: 'activity', notes: '注意保暖', link: '' },
+    ]},
+    { id: 3, date: '2/15', dayName: 'D3｜札幌', items: [
+      { id: 301, time: '09:00', title: '從小樽回札幌', location: 'JR 小樽站', type: 'transport', notes: '直達札幌', link: '' },
+      { id: 302, time: '10:00', title: '抵達札幌', location: '札幌車站', type: 'transport', notes: '寄放行李於飯店或車站置物櫃', link: '' },
+      { id: 303, time: '11:00', title: '景點參觀', location: '圓山、北海道神宮', type: 'activity', notes: '圓山公園積雪景色', link: '' },
+      { id: 304, time: '13:00', title: '午餐', location: '味噌拉麵或湯咖哩', type: 'food', notes: '確認拉麵橫丁營業時間', link: '' },
+      { id: 305, time: '15:00', title: '札幌市區購物', location: 'PARCO、PIVOT、狸小路', type: 'shopping', notes: '採購藥妝與紀念品', link: '' },
+      { id: 306, time: '17:30', title: '夜景散策', location: '電視塔夜景或市區散步', type: 'activity', notes: '', link: '' },
+      { id: 307, time: '19:00', title: '晚餐', location: '札幌市區', type: 'food', notes: '', link: '' },
+      { id: 308, time: '21:00', title: '回飯店', location: '札幌飯店', type: 'activity', notes: '', link: '' },
+    ]},
+    { id: 4, date: '2/16', dayName: 'D4｜洞爺湖', items: [
+      { id: 401, time: '09:00', title: 'JR 前往洞爺湖', location: 'JR 札幌站', type: 'transport', notes: '車程約 2 小時', link: '' },
+      { id: 402, time: '11:30', title: '抵達洞爺湖、午餐', location: '洞爺湖車站或附近餐廳', type: 'food', notes: '', link: '' },
+      { id: 403, time: '14:00', title: '飯店 check-in', location: '望樓游湖 BOUROU', type: 'hotel', notes: '確認接駁車時間', link: '' },
+      { id: 404, time: '15:00', title: '度假、泡湯、湖景時間', location: '飯店內設施', type: 'activity', notes: '享受私人時間', link: '' },
+      { id: 405, time: '18:00', title: '飯店內晚餐', location: '望樓游湖', type: 'food', notes: '懷石料理或會席料理', link: '' },
+      { id: 406, time: '20:00', title: '溫泉、休息', location: '飯店內溫泉', type: 'activity', notes: '確認露天風呂開放時間', link: '' },
+    ]},
+    { id: 5, date: '2/17', dayName: 'D5｜函館', items: [
+      { id: 501, time: '09:00', title: '再泡一次湯', location: '望樓游湖', type: 'activity', notes: '退房前最後享受', link: '' },
+      { id: 502, time: '11:00', title: 'JR 前往函館', location: 'JR 洞爺湖站', type: 'transport', notes: '車程約 2 小時', link: '' },
+      { id: 503, time: '13:00', title: '函館朝市午餐', location: '函館朝市', type: 'food', notes: '吃海鮮丼飯', link: '' },
+      { id: 504, time: '15:00', title: '飯店 check-in', location: '函館市區飯店', type: 'hotel', notes: '尋找有頂樓浴場的飯店', link: '' },
+      { id: 505, time: '17:00', title: '金森紅磚倉庫散策', location: '金森紅磚倉庫', type: 'activity', notes: '採購伴手禮', link: '' },
+      { id: 506, time: '18:30', title: '函館山夜景', location: '函館山', type: 'activity', notes: '搭乘纜車，注意強風', link: '' },
+      { id: 507, time: '21:00', title: '回飯店休息', location: '函館飯店', type: 'activity', notes: '', link: '' },
+    ]},
+    { id: 6, date: '2/18', dayName: 'D6｜青森', items: [
+      { id: 601, time: '08:00', title: '前往新函館北斗站', location: '新函館北斗站', type: 'transport', notes: '準備搭新幹線', link: '' },
+      { id: 602, time: '09:30', title: '新幹線至青森', location: '新青森站', type: 'transport', notes: '約 1 小時車程', link: '' },
+      { id: 603, time: '10:30', title: '抵達青森、寄放行李', location: '青森市區飯店', type: 'activity', notes: '從新青森轉車至青森站', link: '' },
+      { id: 604, time: '11:00', title: '景點參觀', location: '青森縣立美術館', type: 'activity', notes: '奈良美智青森犬', link: '' },
+      { id: 605, time: '13:30', title: '午餐', location: 'A-Factory (青森車站旁)', type: 'food', notes: '採購蘋果相關商品', link: '' },
+      { id: 606, time: '15:00', title: '景點參觀', location: '青森睡魔之家', type: 'activity', notes: '瞭解睡魔祭典', link: '' },
+      { id: 607, time: '17:00', title: '晚餐', location: '青森市區', type: 'food', notes: '', link: '' },
+      { id: 608, time: '20:00', title: '回飯店休息', location: '青森飯店', type: 'activity', notes: '', link: '' },
+    ]},
+    { id: 7, date: '2/19', dayName: 'D7｜弘前', items: [
+      { id: 701, time: '08:30', title: '前往弘前', location: 'JR 青森站', type: 'transport', notes: 'JR 40 分鐘車程', link: '' },
+      { id: 702, time: '09:30', title: '弘前城散策', location: '弘前城', type: 'activity', notes: '冬季雪景', link: '' },
+      { id: 703, time: '12:00', title: '午餐', location: '蘋果咖哩、當地洋食', type: 'food', notes: '', link: '' },
+      { id: 704, time: '13:30', title: '弘前蘋果公園', location: '弘前蘋果公園', type: 'shopping', notes: '買蘋果紀念品', link: '' },
+      { id: 705, time: '15:30', title: '回青森', location: 'JR 弘前站', type: 'transport', notes: '', link: '' },
+      { id: 706, time: '17:00', title: '晚餐', location: '青森市區', type: 'food', notes: '', link: '' },
+      { id: 707, time: '20:00', title: '回飯店', location: '青森飯店', type: 'activity', notes: '', link: '' },
+    ]},
+    { id: 8, date: '2/20', dayName: 'D8｜津輕', items: [
+      { id: 801, time: '09:00', title: '前往五所川原', location: 'JR 青森站', type: 'transport', notes: '', link: '' },
+      { id: 802, time: '10:00', title: '暖爐列車體驗', location: '津輕鐵道', type: 'transport', notes: '必吃烤魷魚！', link: '' },
+      { id: 803, time: '12:00', title: '抵達津輕中里、散策', location: '津輕中里站', type: 'activity', notes: '車站附近攝影', link: '' },
+      { id: 804, time: '13:00', title: '午餐', location: '當地餐廳', type: 'food', notes: '', link: '' },
+      { id: 805, time: '14:00', title: '前往界 津輕', location: '界 津輕', type: 'transport', notes: '確認接駁車', link: 'https://hoshinoresorts.com/zh_tw/resortsandhotels/kai/tsugaru/' },
+      { id: 806, time: '15:00', title: '飯店 check-in', location: '界 津輕', type: 'hotel', notes: '溫泉旅館入住', link: '' },
+      { id: 807, time: '15:30', title: '茶道、祭典體驗', location: '界 津輕', type: 'activity', notes: '參加飯店活動', link: '' },
+      { id: 808, time: '18:00', title: '晚餐', location: '飯店內', type: 'food', notes: '享用豪華會席料理', link: '' },
+      { id: 809, time: '20:00', title: '溫泉、休息', location: '界 津輕', type: 'activity', notes: '', link: '' },
+    ]},
+    { id: 9, date: '2/21', dayName: 'D9｜仙台', items: [
+      { id: 901, time: '09:00', title: '退房前往新青森', location: '界 津輕', type: 'transport', notes: '搭接駁車', link: '' },
+      { id: 902, time: '10:30', title: '新幹線至仙台', location: '新青森站', type: 'transport', notes: '車程約 2 小時', link: '' },
+      { id: 903, time: '12:30', title: '抵達仙台、午餐', location: '仙台車站附近', type: 'food', notes: '午餐地點確認', link: '' },
+      { id: 904, time: '14:00', title: '飯店 check-in', location: '仙台市區飯店', type: 'hotel', notes: '找更方便的飯店', link: '' },
+      { id: 905, time: '15:00', title: '仙台市區購物', location: '商店街、Loft、PARCO', type: 'shopping', notes: '採買牛舌與伴手禮', link: '' },
+      { id: 906, time: '18:00', title: '牛舌晚餐', location: '仙台市區', type: 'food', notes: '必吃利久或善治郎', link: '' },
+      { id: 907, time: '20:00', title: '回飯店休息', location: '仙台飯店', type: 'activity', notes: '', link: '' },
+    ]},
+    { id: 10, date: '2/22', dayName: 'D10｜返家', items: [
+      { id: 1001, time: '08:00', title: '早餐', location: '飯店內或附近咖啡廳', type: 'food', notes: '', link: '' },
+      { id: 1002, time: '09:00', title: '前往仙台機場', location: '仙台站', type: 'transport', notes: '電車 30 分鐘', link: '' },
+      { id: 1003, time: '11:00', title: '辦理登機手續', location: '仙台機場', type: 'flight', notes: '預留時間辦理退稅', link: '' },
+      { id: 1004, time: '13:00', title: '搭機返家', location: '仙台機場', type: 'flight', notes: '', link: '' },
+    ]}
+  ]);
+
+  const [activeDayId, setActiveDayId] = useState(1);
+  const [editingItemId, setEditingItemId] = useState(null);
+
+  // --- 記帳資料 ---
+  const [participants, setParticipants] = useState(['Me', 'Alex', 'Sam', 'Jane']); 
+  
+  const [expenses, setExpenses] = useState([
+    { id: 1, title: 'JR Pass 費用', amount: 35000, currency: 'TWD', category: 'transport', date: '2/13', payer: 'Me' },
+    { id: 2, title: '小樽甜點', amount: 4500, currency: 'JPY', category: 'food', date: '2/14', payer: 'Sam' },
+    { id: 3, title: '湯咖哩晚餐', amount: 5000, currency: 'JPY', category: 'food', date: '2/13', payer: 'Alex' },
+    { id: 4, title: '紀念品', amount: 12000, currency: 'JPY', category: 'shopping', date: '2/15', payer: 'Jane' },
+  ]);
+  
+  const [showKeypad, setShowKeypad] = useState(false);
+  const [newExpense, setNewExpense] = useState({ 
+      title: '', 
+      amount: '', 
+      currency: 'JPY',
+      category: 'food', 
+      payer: 'Me'      
+  });
+
+  const [importantInfo, setImportantInfo] = useState({
+    flights: "去程: (2/13 14:00 抵達新千歲)\n回程: (2/22 13:00 仙台機場)",
+    accommodation: "札幌 (D1, D3)\n小樽 (D2)\n洞爺湖望樓 (D4)\n函館 (D5)\n青森 (D6, D7)\n界 津輕 (D8)\n仙台 (D9)",
+    reminders: "JR Pass (東北+南北海道)\n必吃：湯咖哩、牛舌\n購物：弘前蘋果紀念品、狸小路藥妝",
+  });
+
+  // --- 行程編輯功能 ---
+  const updateItem = (dayId, itemId, field, value) => {
+    setDays(prev => prev.map(d => {
+      if (d.id === dayId) {
+        return {
+          ...d,
+          items: d.items.map(i => i.id === itemId ? { ...i, [field]: value } : i)
+        };
       }
+      return d;
+    }));
+  };
+
+  const deleteItem = (dayId, itemId) => {
+    if (!window.confirm("確定刪除此行程？")) return;
+    setDays(prev => prev.map(d => {
+      if (d.id === dayId) {
+        return { ...d, items: d.items.filter(i => i.id !== itemId) };
+      }
+      return d;
+    }));
+    if(editingItemId === itemId) setEditingItemId(null);
+  };
+
+  const addNewItem = (dayId) => {
+    const newItemId = Date.now();
+    setDays(prev => prev.map(d => {
+      if (d.id === dayId) {
+        return {
+          ...d,
+          items: [...d.items, { 
+            id: newItemId, time: '12:00', title: '新行程', location: '點擊編輯地點', type: 'activity', notes: '', link: '' 
+          }]
+        };
+      }
+      return d;
+    }));
+    setEditingItemId(newItemId);
+  };
+
+  const openGoogleMaps = (location) => {
+    if (!location) return;
+    const query = encodeURIComponent(location);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+  };
+
+  // --- 記帳功能 ---
+  const handleKeypadInput = (val) => {
+    if (val === '.' && newExpense.amount.includes('.')) return;
+    setNewExpense(prev => ({ ...prev, amount: prev.amount + val }));
+  };
+
+  const handleKeypadDelete = () => {
+    setNewExpense(prev => ({ ...prev, amount: prev.amount.slice(0, -1) }));
+  };
+
+  const handleExpenseSubmit = () => {
+    if (!newExpense.title || !newExpense.amount) {
+      alert("請輸入項目名稱與金額");
+      return;
     }
-    </script>
+    const currentDay = days.find(d => d.id === activeDayId)?.date || 'Today';
+    setExpenses([...expenses, {
+      id: Date.now(),
+      title: newExpense.title,
+      amount: parseFloat(newExpense.amount),
+      currency: newExpense.currency,
+      category: newExpense.category,
+      payer: newExpense.payer,       
+      date: currentDay,
+    }]);
+    setNewExpense({ title: '', amount: '', currency: 'JPY', category: 'food', payer: 'Me' });
+    setShowKeypad(false);
+  };
 
-    <!-- Babel Standalone -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  // 匯率 (示意)
+  const exchangeRates = { TWD: 1, ISK: 0.23, JPY: 0.21, USD: 31, EUR: 34, KRW: 0.024 };
 
-    <style>
-      .no-scrollbar::-webkit-scrollbar {
-          display: none;
-      }
-      .no-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-      }
-      body {
-        background-color: #020617; /* slate-950 */
-        color: #e2e8f0; /* slate-200 */
-      }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
+  // --- 視圖組件 ---
 
-    <!-- 錯誤處理 -->
-    <script>
-      window.onerror = function(message, source, lineno, colno, error) {
-        console.error("Error:", message);
-      };
-    </script>
+  const ItineraryView = () => {
+    const currentDayData = days.find(d => d.id === activeDayId);
 
-    <!-- 主程式邏輯 -->
-    <script type="text/babel" data-type="module">
-        import React, { useState, useEffect } from 'react';
-        import { createRoot } from 'react-dom/client';
-        import { 
-          MapPin, Calendar, Wallet, Plus, Trash2, Edit3, 
-          Navigation, CheckCircle2, MoreHorizontal, StickyNote, 
-          Train, Bed, Utensils, ShoppingBag, Mountain, Link as LinkIcon,
-          Plane, X, ChevronRight, ExternalLink,
-          PieChart, ArrowRightLeft
-        } from 'lucide-react';
+    return (
+      <div className="pb-24">
+        {/* 日期分頁導航 (大地色) */}
+        <div className="flex overflow-x-auto gap-3 pb-4 mb-2 no-scrollbar px-1">
+          {days.map(day => (
+            <button
+              key={day.id}
+              onClick={() => setActiveDayId(day.id)}
+              className={`flex-shrink-0 px-5 py-3 rounded-2xl text-sm font-medium transition-all duration-300 border ${
+                activeDayId === day.id 
+                  ? 'bg-[#5B7C75] text-[#FFFCF5] shadow-md shadow-[#5B7C75]/20 scale-105' 
+                  : 'bg-white text-[#A8A29E] border border-transparent hover:border-[#E6E1D6]'
+              }`}
+            >
+              <div className="text-xs opacity-80">{day.date}</div>
+              <div className="text-base font-bold">{day.dayName.split('｜')[0]}</div>
+            </button>
+          ))}
+          <button onClick={() => addNewItem(days.length + 1)} className="flex-shrink-0 w-12 flex items-center justify-center rounded-2xl bg-[#E6E1D6]/50 text-[#78716C] hover:bg-[#E6E1D6]">
+            <Plus size={20} />
+          </button>
+        </div>
 
-        // --- 輔助組件 ---
-
-        // 1. 極夜極光風卡片容器 (Dark & Glassmorphism)
-        const GlassCard = ({ children, className = "", onClick }) => (
-          <div onClick={onClick} className={`bg-slate-900/60 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl p-5 ${className}`}>
-            {children}
-          </div>
-        );
-
-        // 2. 類別圖示與顏色設定 (螢光色系 - 高對比)
-        const CATEGORIES = {
-          food: { label: '餐飲', icon: <Utensils size={18} />, color: '#fb923c', bg: 'bg-orange-900/40', text: 'text-orange-400' },
-          transport: { label: '交通', icon: <Train size={18} />, color: '#34d399', bg: 'bg-emerald-900/40', text: 'text-emerald-400' },
-          shopping: { label: '購物', icon: <ShoppingBag size={18} />, color: '#f472b6', bg: 'bg-pink-900/40', text: 'text-pink-400' },
-          hotel: { label: '住宿', icon: <Bed size={18} />, color: '#818cf8', bg: 'bg-indigo-900/40', text: 'text-indigo-400' },
-          activity: { label: '娛樂', icon: <Mountain size={18} />, color: '#60a5fa', bg: 'bg-blue-900/40', text: 'text-blue-400' },
-          other: { label: '其他', icon: <MoreHorizontal size={18} />, color: '#94a3b8', bg: 'bg-slate-800', text: 'text-slate-400' },
-        };
-
-        const getTypeIcon = (type) => {
-          const cat = CATEGORIES[type] || CATEGORIES.other;
-          // 這裡直接使用 React.cloneElement 注入顏色 class
-          return React.cloneElement(cat.icon, { className: cat.text });
-        };
-
-        const getTypeLabel = (type) => {
-          const map = { food: '餐廳', hotel: '住宿', shopping: '購物', transport: '交通', activity: '景點', flight: '航班' };
-          return map[type] || '活動';
-        };
-
-        // 3. 數字鍵盤 (深色模式)
-        const NumberPad = ({ onInput, onDelete, onConfirm, onClose }) => {
-          const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'Del'];
-          return (
-            <div className="bg-slate-950 border-t border-white/10 p-4 pb-8">
-              <div className="grid grid-cols-3 gap-3">
-                {keys.map(k => (
-                  <button 
-                    key={k} 
-                    onClick={() => k === 'Del' ? onDelete() : onInput(k)}
-                    className={`py-4 text-xl font-medium rounded-2xl transition-colors ${k === 'Del' ? 'bg-slate-900 text-slate-500 hover:text-slate-300' : 'bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-200'}`}
-                  >
-                    {k}
-                  </button>
-                ))}
-                <button onClick={onConfirm} className="col-span-3 py-4 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-2xl mt-2 text-lg shadow-[0_0_20px_rgba(45,212,191,0.3)] active:scale-[0.98] transition-all">
-                  確認儲存
-                </button>
-              </div>
-            </div>
-          );
-        };
-
-        // --- 主程式 ---
-        function App() {
-          const [activeTab, setActiveTab] = useState('itinerary');
-          const [tripName, setTripName] = useState("日本東北＋北海道行程");
-          
-          // --- 行程資料 ---
-          const [days, setDays] = useState([
-            { id: 1, date: '2/13', dayName: 'D1｜札幌', items: [
-              { id: 101, time: '14:00', title: '抵達新千歲機場', location: '新千歲機場 (CTS)', type: 'flight', notes: '國內或國際航廈確認', link: '' },
-              { id: 102, time: '15:30', title: 'JR 前往札幌', location: '新千歲機場站', type: 'transport', notes: '需搭乘快速列車', link: '' },
-              { id: 103, time: '16:30', title: '飯店 check-in', location: '札幌市區飯店', type: 'hotel', notes: '確認入住手續', link: '' },
-              { id: 104, time: '17:30', title: '札幌市區散策', location: '大通公園、時計台', type: 'activity', notes: '拍夜景', link: '' },
-              { id: 105, time: '19:00', title: '晚餐', location: '湯咖哩、成吉思汗烤羊肉', type: 'food', notes: '備選餐廳：達摩', link: '' },
-              { id: 106, time: '21:00', title: '回飯店休息', location: '札幌飯店', type: 'activity', notes: '', link: '' },
-            ]},
-            { id: 2, date: '2/14', dayName: 'D2｜小樽', items: [
-              { id: 201, time: '08:00', title: '早餐後從札幌出發', location: 'JR 札幌站', type: 'transport', notes: '搭乘 JR 至小樽', link: '' },
-              { id: 202, time: '09:00', title: '小樽運河散策', location: '小樽運河', type: 'activity', notes: '確認是否有積雪', link: '' },
-              { id: 203, time: '11:00', title: '堺町通美食購物', location: 'LeTAO、北菓樓', type: 'shopping', notes: '必買 LeTAO 雙層乳酪蛋糕', link: '' },
-              { id: 204, time: '13:00', title: '景點參觀', location: '音樂盒堂、北一硝子', type: 'activity', notes: '北一硝子三號館拍照', link: '' },
-              { id: 205, time: '16:00', title: '飯店 check-in', location: '小樽飯店', type: 'hotel', notes: '放行李休息', link: '' },
-              { id: 206, time: '17:30', title: '晚餐', location: '壽司通或海鮮', type: 'food', notes: '備選政壽司或旭壽司', link: '' },
-              { id: 207, time: '20:00', title: '小樽夜景散步', location: '運河夜景', type: 'activity', notes: '注意保暖', link: '' },
-            ]},
-            { id: 3, date: '2/15', dayName: 'D3｜札幌', items: [
-              { id: 301, time: '09:00', title: '從小樽回札幌', location: 'JR 小樽站', type: 'transport', notes: '直達札幌', link: '' },
-              { id: 302, time: '10:00', title: '抵達札幌', location: '札幌車站', type: 'transport', notes: '寄放行李於飯店或車站置物櫃', link: '' },
-              { id: 303, time: '11:00', title: '景點參觀', location: '圓山、北海道神宮', type: 'activity', notes: '圓山公園積雪景色', link: '' },
-              { id: 304, time: '13:00', title: '午餐', location: '味噌拉麵或湯咖哩', type: 'food', notes: '確認拉麵橫丁營業時間', link: '' },
-              { id: 305, time: '15:00', title: '札幌市區購物', location: 'PARCO、PIVOT、狸小路', type: 'shopping', notes: '採購藥妝與紀念品', link: '' },
-              { id: 306, time: '17:30', title: '夜景散策', location: '電視塔夜景或市區散步', type: 'activity', notes: '', link: '' },
-              { id: 307, time: '19:00', title: '晚餐', location: '札幌市區', type: 'food', notes: '', link: '' },
-              { id: 308, time: '21:00', title: '回飯店', location: '札幌飯店', type: 'activity', notes: '', link: '' },
-            ]},
-            { id: 4, date: '2/16', dayName: 'D4｜洞爺湖', items: [
-              { id: 401, time: '09:00', title: 'JR 前往洞爺湖', location: 'JR 札幌站', type: 'transport', notes: '車程約 2 小時', link: '' },
-              { id: 402, time: '11:30', title: '抵達洞爺湖、午餐', location: '洞爺湖車站或附近餐廳', type: 'food', notes: '', link: '' },
-              { id: 403, time: '14:00', title: '飯店 check-in', location: '望樓游湖 BOUROU', type: 'hotel', notes: '確認接駁車時間', link: '' },
-              { id: 404, time: '15:00', title: '度假、泡湯、湖景時間', location: '飯店內設施', type: 'activity', notes: '享受私人時間', link: '' },
-              { id: 405, time: '18:00', title: '飯店內晚餐', location: '望樓游湖', type: 'food', notes: '懷石料理或會席料理', link: '' },
-              { id: 406, time: '20:00', title: '溫泉、休息', location: '飯店內溫泉', type: 'activity', notes: '確認露天風呂開放時間', link: '' },
-            ]},
-            { id: 5, date: '2/17', dayName: 'D5｜函館', items: [
-              { id: 501, time: '09:00', title: '再泡一次湯', location: '望樓游湖', type: 'activity', notes: '退房前最後享受', link: '' },
-              { id: 502, time: '11:00', title: 'JR 前往函館', location: 'JR 洞爺湖站', type: 'transport', notes: '車程約 2 小時', link: '' },
-              { id: 503, time: '13:00', title: '函館朝市午餐', location: '函館朝市', type: 'food', notes: '吃海鮮丼飯', link: '' },
-              { id: 504, time: '15:00', title: '飯店 check-in', location: '函館市區飯店', type: 'hotel', notes: '尋找有頂樓浴場的飯店', link: '' },
-              { id: 505, time: '17:00', title: '金森紅磚倉庫散策', location: '金森紅磚倉庫', type: 'activity', notes: '採購伴手禮', link: '' },
-              { id: 506, time: '18:30', title: '函館山夜景', location: '函館山', type: 'activity', notes: '搭乘纜車，注意強風', link: '' },
-              { id: 507, time: '21:00', title: '回飯店休息', location: '函館飯店', type: 'activity', notes: '', link: '' },
-            ]},
-            { id: 6, date: '2/18', dayName: 'D6｜青森', items: [
-              { id: 601, time: '08:00', title: '前往新函館北斗站', location: '新函館北斗站', type: 'transport', notes: '準備搭新幹線', link: '' },
-              { id: 602, time: '09:30', title: '新幹線至青森', location: '新青森站', type: 'transport', notes: '約 1 小時車程', link: '' },
-              { id: 603, time: '10:30', title: '抵達青森、寄放行李', location: '青森市區飯店', type: 'activity', notes: '從新青森轉車至青森站', link: '' },
-              { id: 604, time: '11:00', title: '景點參觀', location: '青森縣立美術館', type: 'activity', notes: '奈良美智青森犬', link: '' },
-              { id: 605, time: '13:30', title: '午餐', location: 'A-Factory (青森車站旁)', type: 'food', notes: '採購蘋果相關商品', link: '' },
-              { id: 606, time: '15:00', title: '景點參觀', location: '青森睡魔之家', type: 'activity', notes: '瞭解睡魔祭典', link: '' },
-              { id: 607, time: '17:00', title: '晚餐', location: '青森市區', type: 'food', notes: '', link: '' },
-              { id: 608, time: '20:00', title: '回飯店休息', location: '青森飯店', type: 'activity', notes: '', link: '' },
-            ]},
-            { id: 7, date: '2/19', dayName: 'D7｜弘前', items: [
-              { id: 701, time: '08:30', title: '前往弘前', location: 'JR 青森站', type: 'transport', notes: 'JR 40 分鐘車程', link: '' },
-              { id: 702, time: '09:30', title: '弘前城散策', location: '弘前城', type: 'activity', notes: '冬季雪景', link: '' },
-              { id: 703, time: '12:00', title: '午餐', location: '蘋果咖哩、當地洋食', type: 'food', notes: '', link: '' },
-              { id: 704, time: '13:30', title: '弘前蘋果公園', location: '弘前蘋果公園', type: 'shopping', notes: '買蘋果紀念品', link: '' },
-              { id: 705, time: '15:30', title: '回青森', location: 'JR 弘前站', type: 'transport', notes: '', link: '' },
-              { id: 706, time: '17:00', title: '晚餐', location: '青森市區', type: 'food', notes: '', link: '' },
-              { id: 707, time: '20:00', title: '回飯店', location: '青森飯店', type: 'activity', notes: '', link: '' },
-            ]},
-            { id: 8, date: '2/20', dayName: 'D8｜津輕', items: [
-              { id: 801, time: '09:00', title: '前往五所川原', location: 'JR 青森站', type: 'transport', notes: '', link: '' },
-              { id: 802, time: '10:00', title: '暖爐列車體驗', location: '津輕鐵道', type: 'transport', notes: '必吃烤魷魚！', link: '' },
-              { id: 803, time: '12:00', title: '抵達津輕中里、散策', location: '津輕中里站', type: 'activity', notes: '車站附近攝影', link: '' },
-              { id: 804, time: '13:00', title: '午餐', location: '當地餐廳', type: 'food', notes: '', link: '' },
-              { id: 805, time: '14:00', title: '前往界 津輕', location: '界 津輕', type: 'transport', notes: '確認接駁車', link: 'https://hoshinoresorts.com/zh_tw/resortsandhotels/kai/tsugaru/' },
-              { id: 806, time: '15:00', title: '飯店 check-in', location: '界 津輕', type: 'hotel', notes: '溫泉旅館入住', link: '' },
-              { id: 807, time: '15:30', title: '茶道、祭典體驗', location: '界 津輕', type: 'activity', notes: '參加飯店活動', link: '' },
-              { id: 808, time: '18:00', title: '晚餐', location: '飯店內', type: 'food', notes: '享用豪華會席料理', link: '' },
-              { id: 809, time: '20:00', title: '溫泉、休息', location: '界 津輕', type: 'activity', notes: '', link: '' },
-            ]},
-            { id: 9, date: '2/21', dayName: 'D9｜仙台', items: [
-              { id: 901, time: '09:00', title: '退房前往新青森', location: '界 津輕', type: 'transport', notes: '搭接駁車', link: '' },
-              { id: 902, time: '10:30', title: '新幹線至仙台', location: '新青森站', type: 'transport', notes: '車程約 2 小時', link: '' },
-              { id: 903, time: '12:30', title: '抵達仙台、午餐', location: '仙台車站附近', type: 'food', notes: '午餐地點確認', link: '' },
-              { id: 904, time: '14:00', title: '飯店 check-in', location: '仙台市區飯店', type: 'hotel', notes: '找更方便的飯店', link: '' },
-              { id: 905, time: '15:00', title: '仙台市區購物', location: '商店街、Loft、PARCO', type: 'shopping', notes: '採買牛舌與伴手禮', link: '' },
-              { id: 906, time: '18:00', title: '牛舌晚餐', location: '仙台市區', type: 'food', notes: '必吃利久或善治郎', link: '' },
-              { id: 907, time: '20:00', title: '回飯店休息', location: '仙台飯店', type: 'activity', notes: '', link: '' },
-            ]},
-            { id: 10, date: '2/22', dayName: 'D10｜返家', items: [
-              { id: 1001, time: '08:00', title: '早餐', location: '飯店內或附近咖啡廳', type: 'food', notes: '', link: '' },
-              { id: 1002, time: '09:00', title: '前往仙台機場', location: '仙台站', type: 'transport', notes: '電車 30 分鐘', link: '' },
-              { id: 1003, time: '11:00', title: '辦理登機手續', location: '仙台機場', type: 'flight', notes: '預留時間辦理退稅', link: '' },
-              { id: 1004, time: '13:00', title: '搭機返家', location: '仙台機場', type: 'flight', notes: '', link: '' },
-            ]}
-          ]);
-
-          const [activeDayId, setActiveDayId] = useState(1);
-          const [editingItemId, setEditingItemId] = useState(null);
-
-          // --- 記帳資料 ---
-          const [participants, setParticipants] = useState(['Me', 'Alex', 'Sam', 'Jane']); // 新增參與者列表
-          
-          const [expenses, setExpenses] = useState([
-            // 補上 category 欄位
-            { id: 1, title: '機場接送', amount: 3500, currency: 'TWD', category: 'transport', date: '10/12', payer: 'Alex' },
-            { id: 2, title: '超市採購', amount: 4500, currency: 'ISK', category: 'shopping', date: '10/12', payer: 'Sam' },
-            { id: 3, title: '晚餐', amount: 8000, currency: 'ISK', category: 'food', date: '10/12', payer: 'Me' },
-            { id: 4, title: '油費', amount: 15000, currency: 'ISK', category: 'transport', date: '10/13', payer: 'Alex' },
-          ]);
-          
-          const [showKeypad, setShowKeypad] = useState(false);
-          const [newExpense, setNewExpense] = useState({ 
-              title: '', 
-              amount: '', 
-              currency: 'TWD', 
-              category: 'food', // 預設類別
-              payer: 'Me'      // 預設付款人
-          });
-
-          // 更新重要資訊，對應新行程
-          const [importantInfo, setImportantInfo] = useState({
-            flights: "去程: (2/13 14:00 抵達新千歲)\n回程: (2/22 13:00 仙台機場)",
-            accommodation: "札幌 (D1, D3)\n小樽 (D2)\n洞爺湖望樓 (D4)\n函館 (D5)\n青森 (D6, D7)\n界 津輕 (D8)\n仙台 (D9)",
-            reminders: "JR Pass (東北+南北海道)\n必吃：湯咖哩、牛舌\n購物：弘前蘋果紀念品、狸小路藥妝",
-          });
-
-          // --- 行程編輯功能 ---
-          const updateItem = (dayId, itemId, field, value) => {
-            setDays(prev => prev.map(d => {
-              if (d.id === dayId) {
-                return {
-                  ...d,
-                  items: d.items.map(i => i.id === itemId ? { ...i, [field]: value } : i)
-                };
-              }
-              return d;
-            }));
-          };
-
-          const deleteItem = (dayId, itemId) => {
-            if (!window.confirm("確定刪除此行程？")) return;
-            setDays(prev => prev.map(d => {
-              if (d.id === dayId) {
-                return { ...d, items: d.items.filter(i => i.id !== itemId) };
-              }
-              return d;
-            }));
-            if(editingItemId === itemId) setEditingItemId(null);
-          };
-
-          const addNewItem = (dayId) => {
-            const newItemId = Date.now();
-            setDays(prev => prev.map(d => {
-              if (d.id === dayId) {
-                return {
-                  ...d,
-                  items: [...d.items, { 
-                    id: newItemId, time: '12:00', title: '新行程', location: '點擊編輯地點', type: 'activity', notes: '', link: '' 
-                  }]
-                };
-              }
-              return d;
-            }));
-            setEditingItemId(newItemId);
-          };
-
-          const openGoogleMaps = (location) => {
-            if (!location) return;
-            const query = encodeURIComponent(location);
-            window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
-          };
-
-          // --- 記帳功能 ---
-          const handleKeypadInput = (val) => {
-            if (val === '.' && newExpense.amount.includes('.')) return;
-            setNewExpense(prev => ({ ...prev, amount: prev.amount + val }));
-          };
-
-          const handleKeypadDelete = () => {
-            setNewExpense(prev => ({ ...prev, amount: prev.amount.slice(0, -1) }));
-          };
-
-          const handleExpenseSubmit = () => {
-            if (!newExpense.title || !newExpense.amount) {
-              alert("請輸入項目名稱與金額");
-              return;
-            }
-            const currentDay = days.find(d => d.id === activeDayId)?.date || 'Today';
-            setExpenses([...expenses, {
-              id: Date.now(),
-              title: newExpense.title,
-              amount: parseFloat(newExpense.amount),
-              currency: newExpense.currency,
-              category: newExpense.category,
-              payer: newExpense.payer,       
-              date: currentDay,
-            }]);
-            setNewExpense({ title: '', amount: '', currency: 'TWD', category: 'food', payer: 'Me' });
-            setShowKeypad(false);
-          };
-
-          // 匯率數據 (示意用)
-          const exchangeRates = { TWD: 1, ISK: 0.23, JPY: 0.21, USD: 31, EUR: 34, KRW: 0.024 };
-
-          // --- 視圖組件 ---
-
-          const ItineraryView = () => {
-            const currentDayData = days.find(d => d.id === activeDayId);
+        {/* 行程列表 */}
+        <div className="space-y-5">
+          {currentDayData?.items.map(item => {
+            const isEditing = editingItemId === item.id;
 
             return (
-              <div className="pb-24">
-                {/* 日期分頁導航 (深色版) */}
-                <div className="flex overflow-x-auto gap-3 pb-4 mb-2 no-scrollbar px-1">
-                  {days.map(day => (
-                    <button
-                      key={day.id}
-                      onClick={() => setActiveDayId(day.id)}
-                      className={`flex-shrink-0 px-5 py-3 rounded-2xl text-sm font-medium transition-all duration-300 border ${
-                        activeDayId === day.id 
-                          ? 'bg-teal-900/40 border-teal-500/50 text-teal-300 shadow-[0_0_15px_-3px_rgba(20,184,166,0.2)] scale-105' 
-                          : 'bg-slate-800/40 text-slate-400 border-transparent hover:bg-slate-800'
-                      }`}
-                    >
-                      <div className="text-xs opacity-60">{day.date}</div>
-                      <div className="text-base font-bold">{day.dayName.split('｜')[0]}</div>
-                    </button>
-                  ))}
-                  <button onClick={() => addNewItem(days.length + 1)} className="flex-shrink-0 w-12 flex items-center justify-center rounded-2xl bg-slate-800/50 text-slate-500 hover:bg-slate-700 hover:text-slate-300">
-                    <Plus size={20} />
-                  </button>
-                </div>
-
-                {/* 行程列表 */}
-                <div className="space-y-5">
-                  {currentDayData?.items.map(item => {
-                    const isEditing = editingItemId === item.id;
-
-                    return (
-                      <GlassCard key={item.id} className={`group relative transition-all duration-300 ${isEditing ? 'ring-1 ring-teal-500/50 bg-slate-800/80' : 'hover:bg-slate-800/80'}`}>
-                        
-                        {/* 編輯按鈕 (右上角) */}
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingItemId(isEditing ? null : item.id);
-                          }}
-                          className={`absolute top-4 right-4 p-2 rounded-full transition-all duration-200 z-10 ${isEditing ? 'bg-teal-600 text-white shadow-lg shadow-teal-500/30' : 'bg-slate-800 text-slate-400 hover:text-teal-300 hover:bg-slate-700'}`}
-                        >
-                          {isEditing ? <CheckCircle2 size={18} /> : <Edit3 size={16} />}
-                        </button>
-
-                        {/* 刪除按鈕 (僅在編輯模式出現) */}
-                        {isEditing && (
-                           <button 
-                            onClick={() => deleteItem(currentDayData.id, item.id)}
-                            className="absolute top-4 right-16 p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded-full transition-colors"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        )}
-
-                        {/* 卡片內容 */}
-                        <div className="flex gap-4">
-                          {/* 左側時間與類型線 */}
-                          <div className="flex flex-col items-center gap-2 pt-1">
-                             <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shadow-sm text-slate-400">
-                               {getTypeIcon(item.type)}
-                             </div>
-                             {isEditing ? (
-                               <input 
-                                 type="text" 
-                                 value={item.time}
-                                 onChange={(e) => updateItem(currentDayData.id, item.id, 'time', e.target.value)}
-                                 className="w-12 text-xs font-mono text-center bg-slate-900 rounded py-1 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-300 border border-slate-700"
-                               />
-                             ) : (
-                               <span className="text-xs font-mono font-medium text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">{item.time}</span>
-                             )}
-                             <div className="w-0.5 h-full bg-slate-800 rounded-full my-1"></div>
-                          </div>
-
-                          {/* 右側資訊區 */}
-                          <div className="flex-1 pb-2">
-                            {/* 標題與類型選擇 */}
-                            <div className="pr-12">
-                              {isEditing ? (
-                                 <div className="space-y-2 mb-2">
-                                    <select 
-                                       className="text-xs bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-300 focus:ring-1 focus:ring-teal-500 outline-none"
-                                       value={item.type}
-                                       onChange={(e) => updateItem(currentDayData.id, item.id, 'type', e.target.value)}
-                                     >
-                                       <option value="activity">景點/活動</option>
-                                       <option value="food">餐廳/美食</option>
-                                       <option value="hotel">住宿/飯店</option>
-                                       <option value="shopping">購物點</option>
-                                       <option value="transport">交通/JR</option>
-                                       <option value="flight">航班</option>
-                                     </select>
-                                    <input 
-                                      type="text" 
-                                      value={item.title}
-                                      onChange={(e) => updateItem(currentDayData.id, item.id, 'title', e.target.value)}
-                                      className="w-full font-bold text-lg text-white bg-slate-900 border border-slate-700 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                                      placeholder="行程名稱"
-                                    />
-                                 </div>
-                              ) : (
-                                <h3 className="font-bold text-lg text-slate-100 mb-1 leading-snug tracking-wide">{item.title}</h3>
-                              )}
-                            </div>
-
-                            {/* 地點與導航 */}
-                            <div className="flex items-start gap-1 text-slate-400 text-sm mb-2">
-                              <MapPin size={14} className="mt-0.5 flex-shrink-0 text-slate-500" />
-                              {isEditing ? (
-                                <input 
-                                  type="text" 
-                                  value={item.location}
-                                  onChange={(e) => updateItem(currentDayData.id, item.id, 'location', e.target.value)}
-                                  className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-300"
-                                  placeholder="地點"
-                                />
-                              ) : (
-                                <div className="flex items-center flex-wrap gap-2">
-                                  <span 
-                                    onClick={() => openGoogleMaps(item.location)}
-                                    className="cursor-pointer hover:text-teal-400 hover:underline decoration-1 underline-offset-2 transition-colors"
-                                  >
-                                    {item.location}
-                                  </span>
-                                  {/* 導航按鈕 */}
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openGoogleMaps(item.location);
-                                    }}
-                                    className="flex items-center gap-1 bg-slate-800 hover:bg-teal-900/30 border border-slate-700 hover:border-teal-500/30 px-2 py-0.5 rounded-full text-[10px] text-slate-400 hover:text-teal-300 transition-all"
-                                  >
-                                    <Navigation size={10} /> 導航
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            
-                            {/* 連結欄位 */}
-                            {isEditing ? (
-                              <div className="flex items-center gap-2 mb-2 bg-slate-900 border border-slate-700 rounded px-2 py-1">
-                                 <LinkIcon size={12} className="text-slate-500"/>
-                                 <input 
-                                    type="text" 
-                                    value={item.link}
-                                    onChange={(e) => updateItem(currentDayData.id, item.id, 'link', e.target.value)}
-                                    className="flex-1 bg-transparent text-xs focus:outline-none text-slate-300"
-                                    placeholder="相關連結 (門票/官網)..."
-                                  />
-                              </div>
-                            ) : item.link && (
-                              <a href={item.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-teal-400 bg-teal-900/20 border border-teal-900/50 px-2 py-1 rounded-md mb-2 hover:bg-teal-900/40 transition">
-                                 <ExternalLink size={10} /> 
-                                 相關連結
-                              </a>
-                            )}
-
-                            {/* 筆記區塊 */}
-                            <div className={`mt-2 ${!isEditing && !item.notes ? 'hidden' : 'block'}`}>
-                              <div className="flex gap-2">
-                                <StickyNote size={14} className="text-slate-600 mt-1 flex-shrink-0" />
-                                {isEditing ? (
-                                  <textarea 
-                                    value={item.notes}
-                                    onChange={(e) => updateItem(currentDayData.id, item.id, 'notes', e.target.value)}
-                                    placeholder="筆記..."
-                                    className="w-full text-sm text-slate-300 bg-slate-900 border border-slate-700 rounded px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-teal-500 min-h-[60px]"
-                                  />
-                                ) : (
-                                  <p className="text-sm text-slate-400 leading-relaxed whitespace-pre-wrap bg-slate-950/30 p-2 rounded-lg w-full border border-white/5">
-                                    {item.notes}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                          </div>
-                        </div>
-                      </GlassCard>
-                    );
-                  })}
-
-                  <button 
-                    onClick={() => addNewItem(currentDayData.id)}
-                    className="w-full py-4 rounded-2xl border-2 border-dashed border-slate-700 text-slate-500 font-medium hover:border-teal-500/50 hover:text-teal-400 hover:bg-slate-800/50 transition flex items-center justify-center gap-2"
-                  >
-                    <Plus size={18} /> 新增行程
-                  </button>
-                </div>
-              </div>
-            );
-          };
-
-          const BudgetView = () => (
-            <div className="pb-24">
-              <GlassCard className="mb-6 bg-gradient-to-br from-slate-800 to-slate-900 text-white border-slate-700 shadow-lg">
-                <p className="text-slate-400 text-xs mb-1 tracking-wider uppercase">Total Expenses</p>
-                <div className="flex items-end gap-2">
-                   <h2 className="text-3xl font-bold tracking-tight text-white">
-                     {expenses.reduce((acc, curr) => curr.currency === 'TWD' ? acc + curr.amount : acc, 0).toLocaleString()} 
-                     <span className="text-sm font-normal ml-1 text-slate-400">TWD</span>
-                   </h2>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-3">*僅顯示台幣支出</p>
-              </GlassCard>
-
-              <div className="space-y-3">
-                {expenses.slice().reverse().map(ex => {
-                  const cat = CATEGORIES[ex.category] || CATEGORIES.other;
-                  return (
-                  <div key={ex.id} className="flex items-center justify-between p-4 bg-slate-800/50 rounded-2xl shadow-sm border border-slate-700/50 backdrop-blur-sm">
-                    <div className="flex items-center gap-4">
-                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${cat.bg} ${cat.text} font-bold text-xs border border-slate-700`}>
-                         {React.cloneElement(cat.icon, { size: 20 })}
-                       </div>
-                       <div>
-                         <h4 className="font-bold text-slate-200">{ex.title}</h4>
-                         <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span className="bg-slate-900 px-1.5 py-0.5 rounded text-slate-400">{ex.payer}</span>
-                            <span>•</span>
-                            <span>{ex.date}</span>
-                          </div>
-                       </div>
-                    </div>
-                    <div className="text-right">
-                      <span className="block font-bold text-slate-200 text-lg">
-                        {ex.amount.toLocaleString()} <span className="text-xs font-normal text-slate-500">{ex.currency}</span>
-                      </span>
-                    </div>
-                  </div>
-                )})}
-              </div>
-
-              <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-4/5 max-w-sm z-30">
-                <button 
-                  onClick={() => {
-                    setNewExpense(prev => ({ ...prev, title: '' })); 
-                    setShowKeypad(true);
-                  }}
-                  className="w-full py-4 bg-teal-600 hover:bg-teal-500 text-white rounded-full shadow-[0_0_30px_-5px_rgba(20,184,166,0.4)] flex items-center justify-center gap-2 text-lg font-bold transition-transform hover:scale-105 active:scale-95 border border-white/10"
-                >
-                  <Plus size={24} /> 記一筆
-                </button>
-              </div>
-
-              {showKeypad && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
-                   <div className="absolute inset-0" onClick={() => setShowKeypad(false)} />
-                   <div className="relative w-full max-w-md bg-slate-950 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300 border border-white/10 max-h-[90vh] flex flex-col">
-                     
-                     {/* Modal 上半部 - 資訊輸入區 (可滾動) */}
-                     <div className="bg-slate-900/50 p-5 flex-1 overflow-y-auto no-scrollbar">
-                       <div className="flex justify-between items-center mb-4">
-                         <h3 className="font-bold text-slate-400">新增支出</h3>
-                         <button onClick={() => setShowKeypad(false)} className="p-2 bg-slate-800 rounded-full text-slate-500 shadow-sm hover:text-slate-300"><X size={18}/></button>
-                       </div>
-
-                       {/* 金額與幣別 (深色優化) */}
-                       <div className="flex items-end gap-3 mb-6 bg-slate-900 p-3 rounded-2xl shadow-sm border border-slate-700">
-                          <div className="relative">
-                            <select 
-                              className="appearance-none bg-slate-800 pl-3 pr-8 py-2 rounded-xl text-sm font-bold text-slate-300 focus:ring-2 focus:ring-teal-500 outline-none border border-slate-700"
-                              value={newExpense.currency}
-                              onChange={(e) => setNewExpense({...newExpense, currency: e.target.value})}
-                            >
-                              {Object.keys(exchangeRates).map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>
-                          </div>
-                          <div className="flex-1 text-right">
-                             <span className="text-3xl font-bold text-white">{newExpense.amount || <span className="text-slate-700">0</span>}</span>
-                          </div>
-                       </div>
-
-                       {/* 項目名稱 */}
-                       <div className="mb-6">
-                         <label className="text-xs text-slate-500 ml-1 mb-1 block">消費項目</label>
-                         <input 
-                           autoFocus
-                           type="text" 
-                           placeholder="例如：午餐、車票..." 
-                           className="w-full text-lg font-bold bg-transparent border-b border-slate-700 focus:border-teal-500 focus:outline-none py-2 px-1 placeholder-slate-600 text-white"
-                           value={newExpense.title}
-                           onChange={(e) => setNewExpense({...newExpense, title: e.target.value})}
-                         />
-                       </div>
-
-                       {/* 類別選擇 (新增) */}
-                       <div className="mb-6">
-                         <label className="text-xs text-slate-500 ml-1 mb-2 block">消費類別</label>
-                         <div className="grid grid-cols-6 gap-2">
-                           {Object.entries(CATEGORIES).map(([key, cat]) => {
-                             const isSelected = newExpense.category === key;
-                             return (
-                               <button 
-                                 key={key}
-                                 onClick={() => setNewExpense({...newExpense, category: key})}
-                                 className={`flex flex-col items-center justify-center gap-1 py-2 rounded-xl transition-all border ${isSelected ? 'bg-teal-600 border-teal-500 text-white shadow-md scale-105' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}
-                               >
-                                 {React.cloneElement(cat.icon, { size: 16, className: isSelected ? 'text-white' : cat.text })}
-                               </button>
-                             );
-                           })}
-                         </div>
-                         <p className="text-center text-xs text-teal-400 font-bold mt-1 h-4">{CATEGORIES[newExpense.category]?.label}</p>
-                       </div>
-
-                       {/* 誰付錢 (新增) */}
-                       <div className="mb-2">
-                         <label className="text-xs text-slate-500 ml-1 mb-2 block">誰先付錢？</label>
-                         <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-                           {participants.map(p => {
-                             const isSelected = newExpense.payer === p;
-                             return (
-                               <button
-                                 key={p}
-                                 onClick={() => setNewExpense({...newExpense, payer: p})}
-                                 className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold border transition-all ${isSelected ? 'bg-teal-600 text-white border-teal-500 shadow-lg shadow-teal-900/40' : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'}`}
-                               >
-                                 {p}
-                               </button>
-                             );
-                           })}
-                         </div>
-                       </div>
-                     </div>
-
-                     {/* Modal 下半部 - 數字鍵盤 */}
-                     <NumberPad 
-                       onInput={handleKeypadInput} 
-                       onDelete={handleKeypadDelete} 
-                       onConfirm={handleExpenseSubmit}
-                       onClose={() => setShowKeypad(false)}
-                     />
-                   </div>
-                </div>
-              )}
-            </div>
-          );
-
-          const InfoView = () => {
-            const shoppingItems = days.flatMap(d => d.items.filter(i => i.type === 'shopping'));
-
-            return (
-              <div className="space-y-5 pb-24">
-                <h2 className="text-xl font-bold text-slate-200 px-1">重要資訊整理</h2>
-                <div className="grid grid-cols-2 gap-4">
-                   <GlassCard className="flex flex-col gap-2 min-h-[120px]">
-                      <div className="w-8 h-8 rounded-full bg-sky-900/30 text-sky-400 flex items-center justify-center border border-sky-800/30">
-                        <Plane size={16} />
-                      </div>
-                      <h3 className="font-bold text-slate-300 text-sm">航班資訊</h3>
-                      <textarea 
-                        className="flex-1 text-xs text-slate-400 bg-transparent resize-none focus:outline-none leading-relaxed"
-                        value={importantInfo.flights}
-                        onChange={(e) => setImportantInfo({...importantInfo, flights: e.target.value})}
-                      />
-                   </GlassCard>
-                   <GlassCard className="flex flex-col gap-2 min-h-[120px]">
-                      <div className="w-8 h-8 rounded-full bg-indigo-900/30 text-indigo-400 flex items-center justify-center border border-indigo-800/30">
-                        <Bed size={16} />
-                      </div>
-                      <h3 className="font-bold text-slate-300 text-sm">住宿訂單</h3>
-                      <textarea 
-                        className="flex-1 text-xs text-slate-400 bg-transparent resize-none focus:outline-none leading-relaxed"
-                        value={importantInfo.accommodation}
-                        onChange={(e) => setImportantInfo({...importantInfo, accommodation: e.target.value})}
-                      />
-                   </GlassCard>
-                </div>
-
-                <GlassCard>
-                  <h3 className="font-bold text-slate-300 mb-3 flex items-center gap-2">
-                     <ShoppingBag size={18} className="text-pink-400" /> 購物清單
-                  </h3>
-                  {shoppingItems.length > 0 && (
-                    <div className="mb-4 bg-pink-900/10 rounded-xl p-3 border border-pink-900/30">
-                       <p className="text-[10px] text-pink-400 font-bold mb-2 uppercase tracking-wide">來自行程卡的提醒</p>
-                       <ul className="space-y-2">
-                         {shoppingItems.map((item, idx) => (
-                           <li key={`shop-${idx}`} className="flex gap-2 text-sm text-slate-300">
-                             <span className="text-pink-500/70">•</span>
-                             <span>{item.notes || item.title}</span>
-                           </li>
-                         ))}
-                       </ul>
-                    </div>
-                  )}
-                  <textarea 
-                     placeholder="其他待買清單..."
-                     className="w-full text-sm text-slate-500 bg-transparent border-t border-dashed border-slate-700 pt-2 focus:outline-none min-h-[80px]"
-                  />
-                </GlassCard>
-
-                <GlassCard>
-                  <h3 className="font-bold text-slate-300 mb-2 flex items-center gap-2">
-                     <CheckCircle2 size={18} className="text-emerald-400" /> 行前/其他備忘
-                  </h3>
-                  <textarea 
-                    className="w-full h-32 bg-transparent text-sm text-slate-400 resize-none focus:outline-none leading-relaxed"
-                    value={importantInfo.reminders}
-                    onChange={(e) => setImportantInfo({...importantInfo, reminders: e.target.value})}
-                  />
-                </GlassCard>
-              </div>
-            );
-          };
-
-          return (
-            <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-teal-500/30">
-              <div className="max-w-md mx-auto min-h-screen relative shadow-2xl bg-slate-950">
+              <GlassCard key={item.id} className={`group relative transition-all duration-300 ${isEditing ? 'ring-2 ring-[#5B7C75]/50' : 'hover:translate-y-[-2px]'}`}>
                 
-                {/* Header */}
-                <header className="sticky top-0 z-20 bg-slate-950/80 backdrop-blur-md px-5 pt-12 pb-2 border-b border-white/5">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <input 
-                        value={tripName}
-                        onChange={(e) => setTripName(e.target.value)}
-                        className="text-2xl font-bold text-white bg-transparent focus:outline-none w-full placeholder-slate-600"
-                      />
-                      <p className="text-xs font-bold text-slate-500 tracking-wider uppercase mt-1">Travel Plan</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden border-2 border-slate-700 shadow-sm">
-                       <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User" />
-                    </div>
+                {/* 編輯按鈕 */}
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingItemId(isEditing ? null : item.id);
+                  }}
+                  className={`absolute top-4 right-4 p-2 rounded-full transition-all duration-200 z-10 ${isEditing ? 'bg-[#5B7C75] text-white' : 'bg-[#F5F5F4] text-[#A8A29E] hover:text-[#5B7C75]'}`}
+                >
+                  {isEditing ? <CheckCircle2 size={18} /> : <Edit3 size={16} />}
+                </button>
+
+                {/* 刪除按鈕 */}
+                {isEditing && (
+                   <button 
+                    onClick={() => deleteItem(currentDayData.id, item.id)}
+                    className="absolute top-4 right-16 p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                )}
+
+                {/* 卡片內容 */}
+                <div className="flex gap-4">
+                  {/* 左側時間與類型線 */}
+                  <div className="flex flex-col items-center gap-2 pt-1">
+                     <div className="w-10 h-10 rounded-full bg-white border border-[#E6E1D6] flex items-center justify-center shadow-sm text-[#78716C]">
+                       {getTypeIcon(item.type)}
+                     </div>
+                     {isEditing ? (
+                       <input 
+                         type="text" 
+                         value={item.time}
+                         onChange={(e) => updateItem(currentDayData.id, item.id, 'time', e.target.value)}
+                         className="w-12 text-xs font-mono text-center bg-[#F5F5F4] rounded py-1 focus:outline-none focus:ring-1 focus:ring-[#5B7C75] text-[#57534E]"
+                       />
+                     ) : (
+                       <span className="text-xs font-mono font-medium text-[#78716C] bg-[#F5F5F4] px-1.5 py-0.5 rounded">{item.time}</span>
+                     )}
+                     <div className="w-0.5 h-full bg-[#E6E1D6] rounded-full my-1"></div>
                   </div>
-                </header>
 
-                {/* Main Content */}
-                <main className="px-5 pt-4">
-                  {activeTab === 'itinerary' && <ItineraryView />}
-                  {activeTab === 'budget' && <BudgetView />}
-                  {activeTab === 'info' && <InfoView />}
-                </main>
+                  {/* 右側資訊區 */}
+                  <div className="flex-1 pb-2">
+                    {/* 標題與類型選擇 */}
+                    <div className="pr-12">
+                      {isEditing ? (
+                         <div className="space-y-2 mb-2">
+                            <select 
+                               className="text-xs bg-[#F5F5F4] border-none rounded-lg px-2 py-1 text-[#57534E] focus:ring-1 focus:ring-[#5B7C75]"
+                               value={item.type}
+                               onChange={(e) => updateItem(currentDayData.id, item.id, 'type', e.target.value)}
+                             >
+                               <option value="activity">景點/活動</option>
+                               <option value="food">餐廳/美食</option>
+                               <option value="hotel">住宿/飯店</option>
+                               <option value="shopping">購物點</option>
+                               <option value="transport">交通/JR</option>
+                               <option value="flight">航班</option>
+                             </select>
+                            <input 
+                              type="text" 
+                              value={item.title}
+                              onChange={(e) => updateItem(currentDayData.id, item.id, 'title', e.target.value)}
+                              className="w-full font-bold text-lg text-[#44403C] bg-[#F5F5F4] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#5B7C75]"
+                              placeholder="行程名稱"
+                            />
+                         </div>
+                      ) : (
+                        <h3 className="font-bold text-lg text-[#44403C] mb-1 leading-snug">{item.title}</h3>
+                      )}
+                    </div>
 
-                {/* Bottom Nav */}
-                <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2.5rem)] max-w-[calc(28rem-2.5rem)] h-16 bg-slate-900/90 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.3)] flex justify-around items-center z-40 border border-white/10 ring-1 ring-black/20">
-                  <button 
-                    onClick={() => setActiveTab('itinerary')}
-                    className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'itinerary' ? 'text-teal-400 shadow-teal-500/20 drop-shadow-[0_0_8px_rgba(20,184,166,0.5)]' : 'text-slate-600 hover:text-slate-400'}`}>
-                    <Calendar size={20} strokeWidth={activeTab === 'itinerary' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">行程</span>
-                  </button>
-                  
-                  <button 
-                    onClick={() => setActiveTab('budget')}
-                    className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'budget' ? 'text-teal-400 shadow-teal-500/20 drop-shadow-[0_0_8px_rgba(20,184,166,0.5)]' : 'text-slate-600 hover:text-slate-400'}`}>
-                    <Wallet size={20} strokeWidth={activeTab === 'budget' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">記帳</span>
-                  </button>
+                    {/* 地點與導航 */}
+                    <div className="flex items-start gap-1 text-[#78716C] text-sm mb-2">
+                      <MapPin size={14} className="mt-0.5 flex-shrink-0 text-[#A8A29E]" />
+                      {isEditing ? (
+                        <input 
+                          type="text" 
+                          value={item.location}
+                          onChange={(e) => updateItem(currentDayData.id, item.id, 'location', e.target.value)}
+                          className="flex-1 bg-[#F5F5F4] rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#5B7C75]"
+                          placeholder="地點"
+                        />
+                      ) : (
+                        <div className="flex items-center flex-wrap gap-2">
+                          <span 
+                            onClick={() => openGoogleMaps(item.location)}
+                            className="cursor-pointer hover:text-[#5B7C75] hover:underline decoration-1 underline-offset-2 transition-colors"
+                          >
+                            {item.location}
+                          </span>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openGoogleMaps(item.location);
+                            }}
+                            className="flex items-center gap-1 bg-[#E6E1D6]/40 hover:bg-[#E6E1D6] px-2 py-0.5 rounded-full text-[10px] text-[#57534E] transition-colors"
+                          >
+                            <Navigation size={10} /> 導航
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* 連結欄位 */}
+                    {isEditing ? (
+                      <div className="flex items-center gap-2 mb-2 bg-[#F5F5F4] rounded px-2 py-1">
+                         <LinkIcon size={12} className="text-[#A8A29E]"/>
+                         <input 
+                            type="text" 
+                            value={item.link}
+                            onChange={(e) => updateItem(currentDayData.id, item.id, 'link', e.target.value)}
+                            className="flex-1 bg-transparent text-xs focus:outline-none text-[#57534E]"
+                            placeholder="相關連結 (門票/官網)..."
+                          />
+                      </div>
+                    ) : item.link && (
+                      <a href={item.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[#5B7C75] bg-[#5B7C75]/10 px-2 py-1 rounded-md mb-2 hover:bg-[#5B7C75]/20 transition">
+                         <ExternalLink size={10} /> 
+                         相關連結
+                      </a>
+                    )}
 
-                  <button 
-                    onClick={() => setActiveTab('info')}
-                    className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'info' ? 'text-teal-400 shadow-teal-500/20 drop-shadow-[0_0_8px_rgba(20,184,166,0.5)]' : 'text-slate-600 hover:text-slate-400'}`}>
-                    <StickyNote size={20} strokeWidth={activeTab === 'info' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">資訊</span>
-                  </button>
-                </nav>
-              </div>
+                    {/* 筆記區塊 */}
+                    <div className={`mt-2 ${!isEditing && !item.notes ? 'hidden' : 'block'}`}>
+                      <div className="flex gap-2">
+                        <StickyNote size={14} className="text-[#D6D3D1] mt-1 flex-shrink-0" />
+                        {isEditing ? (
+                          <textarea 
+                            value={item.notes}
+                            onChange={(e) => updateItem(currentDayData.id, item.id, 'notes', e.target.value)}
+                            placeholder="筆記..."
+                            className="w-full text-sm text-[#57534E] bg-[#F5F5F4] rounded px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-[#5B7C75] min-h-[60px]"
+                          />
+                        ) : (
+                          <p className="text-sm text-[#78716C] leading-relaxed whitespace-pre-wrap bg-[#F5F5F4]/50 p-2 rounded-lg w-full">
+                            {item.notes}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              </GlassCard>
+            );
+          })}
+
+          <button 
+            onClick={() => addNewItem(currentDayData.id)}
+            className="w-full py-4 rounded-2xl border-2 border-dashed border-[#E6E1D6] text-[#A8A29E] font-medium hover:border-[#5B7C75] hover:text-[#5B7C75] transition flex items-center justify-center gap-2 bg-white/50"
+          >
+            <Plus size={18} /> 新增行程
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const BudgetView = () => (
+    <div className="pb-24">
+      {/* 總覽卡片改為深暖灰，維持可讀性 */}
+      <GlassCard className="mb-6 bg-gradient-to-r from-[#292524] to-[#44403C] text-[#FAFAF9] border-none shadow-lg">
+        <p className="text-[#A8A29E] text-xs mb-1 tracking-wider uppercase">Total Expenses</p>
+        <div className="flex items-end gap-2">
+           <h2 className="text-3xl font-bold tracking-tight">
+             {expenses.reduce((acc, curr) => curr.currency === 'TWD' ? acc + curr.amount : acc, 0).toLocaleString()} 
+             <span className="text-sm font-normal ml-1 text-[#78716C]">TWD</span>
+           </h2>
+        </div>
+        <p className="text-[10px] text-[#A8A29E] mt-3">*僅顯示台幣支出</p>
+      </GlassCard>
+
+      <div className="space-y-3">
+        {expenses.slice().reverse().map(ex => {
+          const cat = CATEGORIES[ex.category] || CATEGORIES.other;
+          return (
+          <div key={ex.id} className="flex items-center justify-between p-4 bg-white rounded-2xl shadow-sm border border-[#E6E1D6]">
+            <div className="flex items-center gap-4">
+               <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${cat.bg} ${cat.text}`}>
+                 {React.cloneElement(cat.icon, { size: 20 })}
+               </div>
+               <div>
+                 <h4 className="font-bold text-[#44403C]">{ex.title}</h4>
+                 <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                    <span className="bg-[#F5F5F4] px-1.5 py-0.5 rounded text-[#78716C]">{ex.payer}</span>
+                    <span>•</span>
+                    <span>{ex.date}</span>
+                  </div>
+               </div>
             </div>
-          );
-        }
+            <div className="text-right">
+              <span className="block font-bold text-[#44403C] text-lg">
+                {ex.amount.toLocaleString()} <span className="text-xs font-normal text-[#78716C]">{ex.currency}</span>
+              </span>
+            </div>
+          </div>
+        )})}
+      </div>
 
-        const container = document.getElementById('root');
-        if (container) {
-          const root = createRoot(container);
-          root.render(<App />);
-        } else {
-          console.error("Root element not found");
-        }
-    </script>
-</body>
-</html>
+      <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-4/5 max-w-sm z-30">
+        <button 
+          onClick={() => {
+            setNewExpense(prev => ({ ...prev, title: '' })); 
+            setShowKeypad(true);
+          }}
+          className="w-full py-4 bg-[#5B7C75] hover:bg-[#4A665F] text-white rounded-full shadow-[0_10px_30px_rgba(91,124,117,0.4)] flex items-center justify-center gap-2 text-lg font-bold transition-transform hover:scale-105 active:scale-95"
+        >
+          <Plus size={24} /> 記一筆
+        </button>
+      </div>
+
+      {showKeypad && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-stone-900/20 backdrop-blur-sm">
+           <div className="absolute inset-0" onClick={() => setShowKeypad(false)} />
+           <div className="relative w-full max-w-md bg-[#FFFCF5] rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300 max-h-[90vh] flex flex-col">
+             
+             {/* Modal 上半部 */}
+             <div className="bg-[#F5F5F4]/50 p-5 flex-1 overflow-y-auto no-scrollbar">
+               <div className="flex justify-between items-center mb-4">
+                 <h3 className="font-bold text-[#78716C]">新增支出</h3>
+                 <button onClick={() => setShowKeypad(false)} className="p-2 bg-white rounded-full text-[#A8A29E] shadow-sm"><X size={18}/></button>
+               </div>
+
+               {/* 金額與幣別 */}
+               <div className="flex items-end gap-3 mb-6 bg-white p-3 rounded-2xl shadow-sm border border-[#E6E1D6]">
+                  <div className="relative">
+                    <select 
+                      className="appearance-none bg-[#F5F5F4] pl-3 pr-8 py-2 rounded-xl text-sm font-bold text-[#57534E] focus:outline-none"
+                      value={newExpense.currency}
+                      onChange={(e) => setNewExpense({...newExpense, currency: e.target.value})}
+                    >
+                      {Object.keys(exchangeRates).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[#A8A29E]">▼</div>
+                  </div>
+                  <div className="flex-1 text-right">
+                     <span className="text-3xl font-bold text-[#44403C]">{newExpense.amount || <span className="text-[#E6E1D6]">0</span>}</span>
+                  </div>
+               </div>
+
+               {/* 項目名稱 */}
+               <div className="mb-6">
+                 <label className="text-xs text-[#A8A29E] ml-1 mb-1 block">消費項目</label>
+                 <input 
+                   autoFocus
+                   type="text" 
+                   placeholder="例如：午餐、車票..." 
+                   className="w-full text-lg font-bold bg-transparent border-b border-[#E6E1D6] focus:border-[#5B7C75] focus:outline-none py-2 px-1 text-[#44403C]"
+                   value={newExpense.title}
+                   onChange={(e) => setNewExpense({...newExpense, title: e.target.value})}
+                 />
+               </div>
+
+               {/* 類別選擇 */}
+               <div className="mb-6">
+                 <label className="text-xs text-[#A8A29E] ml-1 mb-2 block">消費類別</label>
+                 <div className="grid grid-cols-6 gap-2">
+                   {Object.entries(CATEGORIES).map(([key, cat]) => {
+                     const isSelected = newExpense.category === key;
+                     return (
+                       <button 
+                         key={key}
+                         onClick={() => setNewExpense({...newExpense, category: key})}
+                         className={`flex flex-col items-center justify-center gap-1 py-2 rounded-xl transition-all ${isSelected ? 'bg-[#5B7C75] text-white shadow-md scale-105' : 'bg-white border border-[#E6E1D6] text-[#A8A29E] hover:bg-[#F5F5F4]'}`}
+                       >
+                         {React.cloneElement(cat.icon, { size: 16, className: isSelected ? 'text-white' : cat.text })}
+                       </button>
+                     );
+                   })}
+                 </div>
+                 <p className="text-center text-xs text-[#5B7C75] font-bold mt-1 h-4">{CATEGORIES[newExpense.category]?.label}</p>
+               </div>
+
+               {/* 誰付錢 */}
+               <div className="mb-2">
+                 <label className="text-xs text-[#A8A29E] ml-1 mb-2 block">誰先付錢？</label>
+                 <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+                   {participants.map(p => {
+                     const isSelected = newExpense.payer === p;
+                     return (
+                       <button
+                         key={p}
+                         onClick={() => setNewExpense({...newExpense, payer: p})}
+                         className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold border transition-all ${isSelected ? 'bg-[#44403C] text-[#FAFAF9] border-[#44403C]' : 'bg-white text-[#78716C] border-[#E6E1D6]'}`}
+                       >
+                         {p}
+                       </button>
+                     );
+                   })}
+                 </div>
+               </div>
+             </div>
+
+             {/* 數字鍵盤 */}
+             <NumberPad 
+               onInput={handleKeypadInput} 
+               onDelete={handleKeypadDelete} 
+               onConfirm={handleExpenseSubmit}
+               onClose={() => setShowKeypad(false)}
+             />
+           </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const InfoView = () => {
+    const shoppingItems = days.flatMap(d => d.items.filter(i => i.type === 'shopping'));
+
+    return (
+      <div className="space-y-5 pb-24">
+        <h2 className="text-xl font-bold text-[#44403C] px-1">重要資訊整理</h2>
+        <div className="grid grid-cols-2 gap-4">
+           <GlassCard className="flex flex-col gap-2 min-h-[120px]">
+              <div className="w-8 h-8 rounded-full bg-[#E0F2FE] text-[#0284C7] flex items-center justify-center">
+                <Plane size={16} />
+              </div>
+              <h3 className="font-bold text-[#57534E] text-sm">航班資訊</h3>
+              <textarea 
+                className="flex-1 text-xs text-[#78716C] bg-transparent resize-none focus:outline-none leading-relaxed"
+                value={importantInfo.flights}
+                onChange={(e) => setImportantInfo({...importantInfo, flights: e.target.value})}
+              />
+           </GlassCard>
+           <GlassCard className="flex flex-col gap-2 min-h-[120px]">
+              <div className="w-8 h-8 rounded-full bg-[#FFF7ED] text-[#EA580C] flex items-center justify-center">
+                <Bed size={16} />
+              </div>
+              <h3 className="font-bold text-[#57534E] text-sm">住宿訂單</h3>
+              <textarea 
+                className="flex-1 text-xs text-[#78716C] bg-transparent resize-none focus:outline-none leading-relaxed"
+                value={importantInfo.accommodation}
+                onChange={(e) => setImportantInfo({...importantInfo, accommodation: e.target.value})}
+              />
+           </GlassCard>
+        </div>
+
+        <GlassCard>
+          <h3 className="font-bold text-[#57534E] mb-3 flex items-center gap-2">
+             <ShoppingBag size={18} className="text-[#BE185D]" /> 購物清單
+          </h3>
+          {shoppingItems.length > 0 && (
+            <div className="mb-4 bg-[#FDF2F8] rounded-xl p-3 border border-[#FBCFE8]">
+               <p className="text-[10px] text-[#DB2777] font-bold mb-2 uppercase tracking-wide">來自行程卡的提醒</p>
+               <ul className="space-y-2">
+                 {shoppingItems.map((item, idx) => (
+                   <li key={`shop-${idx}`} className="flex gap-2 text-sm text-[#57534E]">
+                     <span className="text-[#F472B6]">•</span>
+                     <span>{item.notes || item.title}</span>
+                   </li>
+                 ))}
+               </ul>
+            </div>
+          )}
+          <textarea 
+             placeholder="其他待買清單..."
+             className="w-full text-sm text-[#78716C] bg-transparent border-t border-dashed border-[#E6E1D6] pt-2 focus:outline-none min-h-[80px]"
+          />
+        </GlassCard>
+
+        <GlassCard>
+          <h3 className="font-bold text-[#57534E] mb-2 flex items-center gap-2">
+             <CheckCircle2 size={18} className="text-[#059669]" /> 行前/其他備忘
+          </h3>
+          <textarea 
+            className="w-full h-32 bg-transparent text-sm text-[#78716C] resize-none focus:outline-none leading-relaxed"
+            value={importantInfo.reminders}
+            onChange={(e) => setImportantInfo({...importantInfo, reminders: e.target.value})}
+          />
+        </GlassCard>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[#FDFBF7] text-[#44403C] font-sans selection:bg-[#E6E1D6]">
+      <div className="max-w-md mx-auto min-h-screen relative shadow-2xl bg-[#FFFCF5]">
+        
+        {/* Header */}
+        <header className="sticky top-0 z-20 bg-[#FFFCF5]/90 backdrop-blur-md px-5 pt-12 pb-2 border-b border-[#E6E1D6]/50">
+          <div className="flex justify-between items-center">
+            <div>
+              <input 
+                value={tripName}
+                onChange={(e) => setTripName(e.target.value)}
+                className="text-2xl font-bold text-[#44403C] bg-transparent focus:outline-none w-full placeholder-[#A8A29E]"
+              />
+              <p className="text-xs font-bold text-[#A8A29E] tracking-wider uppercase mt-1">Travel Plan</p>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-[#E6E1D6] overflow-hidden border-2 border-white shadow-sm">
+               <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User" />
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="px-5 pt-4">
+          {activeTab === 'itinerary' && <ItineraryView />}
+          {activeTab === 'budget' && <BudgetView />}
+          {activeTab === 'info' && <InfoView />}
+        </main>
+
+        {/* Bottom Nav */}
+        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2.5rem)] max-w-[calc(28rem-2.5rem)] h-16 bg-[#FFFCF5]/90 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] flex justify-around items-center z-40 border border-[#E6E1D6] ring-1 ring-[#78716C]/5">
+          <button 
+            onClick={() => setActiveTab('itinerary')}
+            className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'itinerary' ? 'text-[#5B7C75]' : 'text-[#A8A29E] hover:text-[#78716C]'}`}>
+            <Calendar size={20} strokeWidth={activeTab === 'itinerary' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">行程</span>
+          </button>
+          
+          <button 
+            onClick={() => setActiveTab('budget')}
+            className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'budget' ? 'text-[#5B7C75]' : 'text-[#A8A29E] hover:text-[#78716C]'}`}>
+            <Wallet size={20} strokeWidth={activeTab === 'budget' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">記帳</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('info')}
+            className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'info' ? 'text-[#5B7C75]' : 'text-[#A8A29E] hover:text-[#78716C]'}`}>
+            <StickyNote size={20} strokeWidth={activeTab === 'info' ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">資訊</span>
+          </button>
+        </nav>
+      </div>
+    </div>
+  );
+}
